@@ -43,19 +43,17 @@ jobs:
           if (!(Test-Path $dll)) { throw "build.rs 未把 DLL 复制到产物目录: $dll" }
           "exe=$exe" >> $env:GITHUB_OUTPUT
 
-      - name: 重组测试夹具（大文件按 4MB 分块入库，此处拼回）
+      - name: 校验测试夹具是否就绪（需手动上传到 fixtures/ 目录）
         run: |
-          New-Item -ItemType Directory -Force -Path fixtures | Out-Null
-          $bases = Get-ChildItem fixtures_parts -File |
-            ForEach-Object { $_.Name -replace '\.\d{3}$','' } |
-            Select-Object -Unique
-          foreach ($b in $bases) {
-            $parts = Get-ChildItem "fixtures_parts/$b.*" | Sort-Object Name
-            $buf = [System.Collections.Generic.List[byte]]::new()
-            foreach ($p in $parts) { $buf.AddRange([System.IO.File]::ReadAllBytes($p.FullName)) }
-            $out = Join-Path (Get-Location) "fixtures/$b"
-            [System.IO.File]::WriteAllBytes($out, $buf.ToArray())
-            Write-Host "重组 $b = $($buf.Count) 字节（$($parts.Count) 块）"
+          $need = @("test.wim","test.esd","corrupt.wim","test.swm","test2.swm","test3.swm")
+          $missing = @()
+          foreach ($f in $need) {
+            $p = "fixtures/$f"
+            if (-not (Test-Path $p) -or ((Get-Item $p).Length -eq 0)) { $missing += $f }
+            else { Write-Host "OK $f = $((Get-Item $p).Length) 字节" }
+          }
+          if ($missing.Count -gt 0) {
+            throw "缺少夹具文件: $($missing -join ', ')（请上传到仓库 fixtures/ 目录）"
           }
 
       - name: 测试 info（应报告 2 个卷）
