@@ -43,6 +43,21 @@ jobs:
           if (!(Test-Path $dll)) { throw "build.rs 未把 DLL 复制到产物目录: $dll" }
           "exe=$exe" >> $env:GITHUB_OUTPUT
 
+      - name: 重组测试夹具（大文件按 4MB 分块入库，此处拼回）
+        run: |
+          New-Item -ItemType Directory -Force -Path fixtures | Out-Null
+          $bases = Get-ChildItem fixtures_parts -File |
+            ForEach-Object { $_.Name -replace '\.\d{3}$','' } |
+            Select-Object -Unique
+          foreach ($b in $bases) {
+            $parts = Get-ChildItem "fixtures_parts/$b.*" | Sort-Object Name
+            $buf = [System.Collections.Generic.List[byte]]::new()
+            foreach ($p in $parts) { $buf.AddRange([System.IO.File]::ReadAllBytes($p.FullName)) }
+            $out = Join-Path (Get-Location) "fixtures/$b"
+            [System.IO.File]::WriteAllBytes($out, $buf.ToArray())
+            Write-Host "重组 $b = $($buf.Count) 字节（$($parts.Count) 块）"
+          }
+
       - name: 测试 info（应报告 2 个卷）
         run: |
           $exe = "${{ steps.bin.outputs.exe }}"

@@ -3,3 +3,6 @@
 /out_*
 **/*.rs.bk
 Cargo.lock.bak
+
+# 原始夹具不入库，改为以 fixtures_parts/ 的 4MB 分块入库，CI 重组（绕开慢速大文件推送）
+/fixtures/
