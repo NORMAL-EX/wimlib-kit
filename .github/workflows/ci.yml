@@ -1,0 +1,100 @@
+name: build-and-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust (x86_64-pc-windows-msvc)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: 缓存 cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: 构建 (release)
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: 定位产物
+        id: bin
+        run: |
+          $exe = "target/x86_64-pc-windows-msvc/release/imgtool.exe"
+          $dll = "target/x86_64-pc-windows-msvc/release/libwim-15.dll"
+          if (!(Test-Path $exe)) { throw "未找到可执行文件 $exe" }
+          if (!(Test-Path $dll)) { throw "build.rs 未把 DLL 复制到产物目录: $dll" }
+          "exe=$exe" >> $env:GITHUB_OUTPUT
+
+      - name: 测试 info（应报告 2 个卷）
+        run: |
+          $exe = "${{ steps.bin.outputs.exe }}"
+          $out = & $exe info fixtures/test.wim
+          $out
+          if ($LASTEXITCODE -ne 0) { throw "info 退出码非 0: $LASTEXITCODE" }
+          if (-not ($out -join "`n" | Select-String -Pattern '卷数\s*:\s*2')) {
+            throw "info 未报告 image_count=2"
+          }
+
+      - name: 测试 verify test.wim（应通过）
+        run: |
+          $exe = "${{ steps.bin.outputs.exe }}"
+          & $exe verify fixtures/test.wim
+          if ($LASTEXITCODE -ne 0) { throw "verify test.wim 应通过但退出码=$LASTEXITCODE" }
+
+      - name: 测试 verify corrupt.wim（应失败，退出码 2）
+        run: |
+          $exe = "${{ steps.bin.outputs.exe }}"
+          & $exe verify fixtures/corrupt.wim
+          $code = $LASTEXITCODE
+          Write-Host "corrupt.wim 退出码 = $code"
+          if ($code -eq 0) { throw "corrupt.wim 不应校验通过" }
+          if ($code -ne 2) { throw "corrupt.wim 期望退出码 2（损坏），实际=$code" }
+
+      - name: 测试 extract WIM
+        run: |
+          $exe = "${{ steps.bin.outputs.exe }}"
+          & $exe extract fixtures/test.wim --index 1 --dest out_wim
+          if ($LASTEXITCODE -ne 0) { throw "extract WIM 退出码非 0" }
+          $files = Get-ChildItem -Recurse -File out_wim
+          if ($files.Count -eq 0) { throw "extract WIM 未解出任何文件" }
+          Write-Host "解出 $($files.Count) 个文件"
+
+      - name: 测试 extract ESD
+        run: |
+          $exe = "${{ steps.bin.outputs.exe }}"
+          & $exe extract fixtures/test.esd --index 1 --dest out_esd
+          if ($LASTEXITCODE -ne 0) { throw "extract ESD 退出码非 0" }
+          if ((Get-ChildItem -Recurse -File out_esd).Count -eq 0) { throw "extract ESD 未解出文件" }
+
+      - name: 测试 extract SWM（自动合并分卷）
+        run: |
+          $exe = "${{ steps.bin.outputs.exe }}"
+          & $exe extract fixtures/test.swm --dest out_swm
+          if ($LASTEXITCODE -ne 0) { throw "extract SWM 退出码非 0" }
+          if ((Get-ChildItem -Recurse -File out_swm).Count -eq 0) { throw "extract SWM 未解出文件" }
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: imgtool-windows-x64
+          path: |
+            target/x86_64-pc-windows-msvc/release/imgtool.exe
+            target/x86_64-pc-windows-msvc/release/libwim-15.dll
