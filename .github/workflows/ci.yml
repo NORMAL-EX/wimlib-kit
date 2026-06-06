@@ -80,6 +80,9 @@ jobs:
           Write-Host "corrupt.wim 退出码 = $code"
           if ($code -eq 0) { throw "corrupt.wim 不应校验通过" }
           if ($code -ne 2) { throw "corrupt.wim 期望退出码 2（损坏），实际=$code" }
+          # 测试通过：显式归零退出码，否则 pwsh 会把上面 verify 的非零码当成步骤失败
+          $global:LASTEXITCODE = 0
+          exit 0
 
       - name: 测试 extract WIM
         run: |
