@@ -14,6 +14,7 @@ pub enum ProgressKind {
     Capture,
     Split,
     Join,
+    Optimize,
 }
 
 impl ProgressKind {
@@ -25,6 +26,7 @@ impl ProgressKind {
             ProgressKind::Capture => "制作",
             ProgressKind::Split => "分卷",
             ProgressKind::Join => "合并",
+            ProgressKind::Optimize => "优化",
         }
     }
 }

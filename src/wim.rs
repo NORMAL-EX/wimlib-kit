@@ -226,6 +226,15 @@ impl<'a> Wim<'a> {
         }
         Ok(())
     }
+
+    /// 原地重写镜像文件（用于 optimize：重建、可选重压缩，去除碎片、缩小体积）。
+    pub fn overwrite(&self, write_flags: c_int) -> Result<(), WimError> {
+        let rc = unsafe { (self.api.overwrite)(self.ptr, write_flags, 0) };
+        if rc != WIMLIB_ERR_SUCCESS {
+            return Err(WimError::from_code_with_api(rc, self.api));
+        }
+        Ok(())
+    }
 }
 
 impl<'a> Drop for Wim<'a> {

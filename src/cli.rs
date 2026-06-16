@@ -107,6 +107,17 @@ pub enum Command {
         #[arg(long)]
         check: bool,
     },
+    /// 优化：原地重写镜像，重建并（可选）重压缩以瘦身（带进度条）
+    Optimize {
+        /// 镜像路径（将被原地重写）
+        image: String,
+        /// 强制重新压缩已压缩的数据（更慢，体积更小）
+        #[arg(long)]
+        recompress: bool,
+        /// 写入完整性表
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 /// 校验失败（镜像损坏）时使用的退出码，区别于一般错误。
@@ -147,6 +158,11 @@ pub fn run(cli: Cli, api: &WimlibApi) -> Result<(), WimError> {
             check,
         } => cmd_split(api, &image, &dest, size, check),
         Command::Join { image, dest, check } => cmd_join(api, &image, &dest, check),
+        Command::Optimize {
+            image,
+            recompress,
+            check,
+        } => cmd_optimize(api, &image, recompress, check),
     }
 }
 
@@ -493,6 +509,36 @@ fn swm_parts(first: &str) -> Result<Vec<String>, WimError> {
         )));
     }
     Ok(parts)
+}
+
+fn cmd_optimize(
+    api: &WimlibApi,
+    image: &str,
+    recompress: bool,
+    check: bool,
+) -> Result<(), WimError> {
+    let mut state = ProgressState::new(ProgressKind::Optimize);
+    let ctx = &mut state as *mut ProgressState as *mut std::os::raw::c_void;
+
+    let wim = Wim::open(api, image, 0, ctx)?;
+    let mut write_flags = WIMLIB_WRITE_FLAG_REBUILD;
+    if recompress {
+        write_flags |= WIMLIB_WRITE_FLAG_RECOMPRESS;
+    }
+    if check {
+        write_flags |= WIMLIB_WRITE_FLAG_CHECK_INTEGRITY;
+    }
+
+    println!("优化（原地重写）{image} ...");
+    let result = wim.overwrite(write_flags);
+    match &result {
+        Ok(()) => {
+            state.finish(true);
+            println!("优化完成 -> {image}");
+        }
+        Err(_) => state.finish(false),
+    }
+    result
 }
 
 #[cfg(test)]

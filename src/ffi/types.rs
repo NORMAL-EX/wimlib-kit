@@ -23,6 +23,7 @@ pub const WIMLIB_REF_FLAG_GLOB_ENABLE: c_int = 0x0000_0001;
 
 // ---- write flags（用于 convert / 制作镜像的写出） ----
 pub const WIMLIB_WRITE_FLAG_CHECK_INTEGRITY: c_int = 0x0000_0001;
+pub const WIMLIB_WRITE_FLAG_RECOMPRESS: c_int = 0x0000_0010;
 pub const WIMLIB_WRITE_FLAG_REBUILD: c_int = 0x0000_0040;
 pub const WIMLIB_WRITE_FLAG_SOLID: c_int = 0x0000_1000;
 

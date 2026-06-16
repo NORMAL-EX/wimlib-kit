@@ -243,3 +243,32 @@ fn split_and_join_roundtrip() {
         "合并后的 WIM 卷数应为 2:\n{stdout}"
     );
 }
+
+#[test]
+fn optimize_inplace() {
+    // 复制夹具到临时文件再原地优化，避免改动仓库里的 fixtures。
+    let work = unique_out("opt").with_extension("wim");
+    std::fs::copy(fixture("test.wim"), &work).expect("复制夹具失败");
+
+    let status = imgtool()
+        .args(["optimize"])
+        .arg(&work)
+        .arg("--recompress")
+        .status()
+        .expect("运行 optimize 失败");
+    assert!(status.success(), "optimize 退出码非 0");
+
+    // 优化后仍应是有效 WIM、2 卷。
+    let out = imgtool()
+        .arg("info")
+        .arg(&work)
+        .output()
+        .expect("运行 info 失败");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let _ = std::fs::remove_file(&work);
+    assert!(out.status.success(), "info 读取优化后的 WIM 失败");
+    assert!(
+        stdout.lines().any(|l| l.contains("卷数") && l.contains('2')),
+        "优化后的 WIM 卷数应为 2:\n{stdout}"
+    );
+}
