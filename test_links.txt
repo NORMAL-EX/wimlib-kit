@@ -1,0 +1,17 @@
+# 官方真实测试镜像链接（均来自微软官方 CDN，已用 HEAD 请求确认 2026-06-06 在线）
+# 格式: URL | 说明 | 大小 | 格式
+# 用途: 在小夹具跑通后，用真实大文件验证进度条/速度/ETA、ESD 解析、长时间运行稳定性。
+# 注意: 这些是微软 Delivery Optimization CDN，下载是合法的；仓库里其余 hotpe.top / yearnstudio.cn 是第三方网盘，未列入。
+
+# --- 最新版，主测对象 ---
+http://dl.delivery.mp.microsoft.com/filestreamingservice/files/e03c7bf6-1826-4ac1-a945-ceb316fa5161/26200.7462.251207-0044.25h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_zh-cn.esd | Win11 25H2 消费版(含专业/家庭/教育多卷) | 5.31 GB | ESD(solid/LZMS)
+http://dl.delivery.mp.microsoft.com/filestreamingservice/files/87542aac-d9aa-440d-bfc4-55a25ca0aeff/26200.7462.251207-0044.25h2_ge_release_svc_refresh_CLIENTBUSINESS_VOL_x64FRE_zh-cn.esd | Win11 25H2 企业版 | 5.23 GB | ESD(solid/LZMS)
+
+# --- 中等体积 ---
+http://dl.delivery.mp.microsoft.com/filestreamingservice/files/04dcfb20-5583-43e7-8be1-30501b0a1c6e/19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_zh-cn.esd | Win10 22H2 专业版 | 3.90 GB | ESD(solid/LZMS)
+
+# --- 最小，适合首轮真实测试 ---
+http://dl.delivery.mp.microsoft.com/filestreamingservice/files/3f88ad25-f1b2-49fa-b580-fb8d1ac54ecb/18363.592.200109-2016.19h2_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_zh-cn.esd | Win10 1909 专业版 | 3.36 GB | ESD(solid/LZMS)
+
+# 提示: ESD 是多卷镜像，wimlib_get_wim_info 拿到 image_count 后逐卷用 wimlib_get_image_property 读
+#       "WINDOWS/PRODUCTNAME"、"DISPLAYNAME"、"FLAGS" 等即可列出"专业版/家庭版/..."。

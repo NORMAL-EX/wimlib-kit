@@ -1,0 +1,110 @@
+name: real-esd-test
+
+# 真实大文件测试：下载微软官方 ESD，跑 info/verify/extract，验证 ESD 解析、
+# 长时间运行稳定性以及进度/速度/ETA 通路。手动触发（文件大、耗时长，不随每次 push 跑）。
+on:
+  workflow_dispatch:
+    inputs:
+      esd_url:
+        description: "ESD 下载地址（默认 Win10 1909 专业版，约 3.36GB）"
+        required: false
+        default: "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/3f88ad25-f1b2-49fa-b580-fb8d1ac54ecb/18363.592.200109-2016.19h2_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_zh-cn.esd"
+      image_index:
+        description: "解包的卷号（1 起始）"
+        required: false
+        default: "1"
+
+jobs:
+  real-test:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust (x86_64-pc-windows-msvc)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: 缓存 cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: 构建 (release)
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: 定位产物
+        id: bin
+        run: |
+          $exe = "target/x86_64-pc-windows-msvc/release/imgtool.exe"
+          if (!(Test-Path $exe)) { throw "未找到可执行文件 $exe" }
+          "exe=$exe" >> $env:GITHUB_OUTPUT
+
+      - name: 下载真实 ESD
+        run: |
+          $url = "${{ github.event.inputs.esd_url }}"
+          Write-Host "下载: $url"
+          $sw = [System.Diagnostics.Stopwatch]::StartNew()
+          curl.exe -L --fail --retry 8 --retry-delay 5 -o real.esd "$url"
+          if ($LASTEXITCODE -ne 0) { throw "ESD 下载失败，退出码=$LASTEXITCODE" }
+          $sw.Stop()
+          $sz = (Get-Item real.esd).Length
+          if ($sz -lt 100MB) { throw "下载的 ESD 体积异常: $sz 字节" }
+          Write-Host ("下载完成: {0:N2} GB，用时 {1:N0}s" -f ($sz/1GB), $sw.Elapsed.TotalSeconds)
+
+      - name: info（应能解析出多个版本/卷）
+        run: |
+          $exe = "${{ steps.bin.outputs.exe }}"
+          $out = & $exe info real.esd
+          $out
+          if ($LASTEXITCODE -ne 0) { throw "info 退出码非 0: $LASTEXITCODE" }
+          $text = $out -join "`n"
+          if (-not ($text | Select-String -Pattern '卷数\s*:\s*(\d+)')) { throw "info 未输出卷数" }
+          $count = [int]([regex]::Match($text, '卷数\s*:\s*(\d+)').Groups[1].Value)
+          Write-Host "解析到卷数 = $count"
+          if ($count -lt 1) { throw "卷数应 >= 1" }
+          exit 0
+
+      - name: verify（ESD 通常无完整性表，应正常返回而非崩溃）
+        run: |
+          $exe = "${{ steps.bin.outputs.exe }}"
+          & $exe verify real.esd
+          $code = $LASTEXITCODE
+          Write-Host "verify 退出码 = $code"
+          # ESD 多数无完整性表 -> 退出码 0（跳过哈希）；若有则校验通过也是 0；损坏才会非 0。
+          if ($code -ne 0 -and $code -ne 2) { throw "verify 异常退出码=$code" }
+          exit 0
+
+      - name: extract（长时间运行 + 进度/速度/ETA 通路）
+        run: |
+          $exe = "${{ steps.bin.outputs.exe }}"
+          $idx = "${{ github.event.inputs.image_index }}"
+          $sw = [System.Diagnostics.Stopwatch]::StartNew()
+          & $exe extract real.esd --index $idx --dest out_real
+          if ($LASTEXITCODE -ne 0) { throw "extract 退出码非 0: $LASTEXITCODE" }
+          $sw.Stop()
+          $files = Get-ChildItem -Recurse -File out_real -ErrorAction SilentlyContinue
+          $bytes = ($files | Measure-Object Length -Sum).Sum
+          if ($files.Count -eq 0) { throw "extract 未解出任何文件" }
+          Write-Host ("解出 {0} 个文件，共 {1:N2} GB，用时 {2:N0}s" -f $files.Count, ($bytes/1GB), $sw.Elapsed.TotalSeconds)
+          # 验证解出了真实系统文件结构（Windows 目录应存在）
+          if (-not (Test-Path "out_real/Windows")) {
+            Write-Host "提示: 未发现 out_real/Windows（该卷可能不是完整系统镜像，仅作提示）"
+          }
+          exit 0
+
+      - name: 清理（释放磁盘）
+        if: always()
+        run: |
+          Remove-Item real.esd -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force out_real -ErrorAction SilentlyContinue
