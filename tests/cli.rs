@@ -154,3 +154,38 @@ fn convert_esd_to_wim() {
     );
     assert!(stdout.contains("LZX"), "转出的 WIM 压缩应为 LZX:\n{stdout}");
 }
+
+#[test]
+fn capture_dir_to_wim() {
+    // 准备一个临时源目录并放入一个文件。
+    let src = unique_out("capsrc");
+    std::fs::create_dir_all(&src).expect("建源目录失败");
+    std::fs::write(src.join("hello.txt"), b"wimlib-kit capture test").expect("写测试文件失败");
+    let dest = unique_out("cap").with_extension("wim");
+
+    let status = imgtool()
+        .args(["capture"])
+        .arg(&src)
+        .args(["--name", "TestImg", "--dest"])
+        .arg(&dest)
+        .status()
+        .expect("运行 capture 失败");
+    let _ = std::fs::remove_dir_all(&src);
+    assert!(status.success(), "capture 退出码非 0");
+    assert!(dest.is_file(), "capture 未产出镜像文件");
+
+    // 制成的 WIM 应有 1 卷，且卷名为 TestImg。
+    let out = imgtool()
+        .arg("info")
+        .arg(&dest)
+        .output()
+        .expect("运行 info 失败");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let _ = std::fs::remove_file(&dest);
+    assert!(out.status.success(), "info 读取制成的 WIM 失败");
+    assert!(
+        stdout.lines().any(|l| l.contains("卷数") && l.contains('1')),
+        "制成的 WIM 应有 1 卷:\n{stdout}"
+    );
+    assert!(stdout.contains("TestImg"), "应包含卷名 TestImg:\n{stdout}");
+}

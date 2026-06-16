@@ -11,6 +11,7 @@ pub enum ProgressKind {
     Verify,
     Extract,
     Convert,
+    Capture,
 }
 
 impl ProgressKind {
@@ -19,6 +20,7 @@ impl ProgressKind {
             ProgressKind::Verify => "校验",
             ProgressKind::Extract => "解包",
             ProgressKind::Convert => "转换",
+            ProgressKind::Capture => "制作",
         }
     }
 }

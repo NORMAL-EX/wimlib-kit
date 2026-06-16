@@ -155,6 +155,21 @@ impl<'a> Wim<'a> {
         unsafe { (self.api.register_progress_function)(self.ptr, cb, progctx) };
     }
 
+    /// 从文件系统目录捕获一个新卷加入本镜像（制作镜像用）。`name` 可为卷命名。
+    /// 默认捕获配置（config_file 传 NULL）、add_flags 为 0。
+    pub fn add_image(&self, source: &str, name: Option<&str>) -> Result<(), WimError> {
+        let wsource = to_wide(source);
+        let wname = name.map(to_wide);
+        let name_ptr = wname.as_ref().map_or(ptr::null(), |v| v.as_ptr());
+        let rc = unsafe {
+            (self.api.add_image)(self.ptr, wsource.as_ptr(), name_ptr, ptr::null(), 0)
+        };
+        if rc != WIMLIB_ERR_SUCCESS {
+            return Err(WimError::from_code_with_api(rc, self.api));
+        }
+        Ok(())
+    }
+
     /// 将本镜像的全部卷写出到文件。`num_threads` 传 0 表示由 wimlib 自动决定。
     pub fn write_to(&self, path: &str, write_flags: c_int) -> Result<(), WimError> {
         let wpath = to_wide(path);
