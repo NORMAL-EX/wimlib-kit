@@ -56,6 +56,11 @@ jobs:
             throw "缺少夹具文件: $($missing -join ', ')（请上传到仓库 fixtures/ 目录）"
           }
 
+      - name: 单元测试 + 集成测试（cargo test，依赖 fixtures 与 DLL）
+        run: |
+          cargo test --release --target x86_64-pc-windows-msvc -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "cargo test 失败，退出码 $LASTEXITCODE" }
+
       - name: 测试 info（应报告 2 个卷）
         run: |
           $exe = "${{ steps.bin.outputs.exe }}"

@@ -48,3 +48,55 @@ pub fn human_bytes(bytes: u64) -> String {
         format!("{val:.2} {}", UNITS[idx])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn human_bytes_boundaries() {
+        assert_eq!(human_bytes(0), "0 B");
+        assert_eq!(human_bytes(1), "1 B");
+        assert_eq!(human_bytes(1023), "1023 B");
+        assert_eq!(human_bytes(1024), "1.00 KiB");
+        assert_eq!(human_bytes(1536), "1.50 KiB");
+        assert_eq!(human_bytes(1024 * 1024), "1.00 MiB");
+        assert_eq!(human_bytes(1024 * 1024 * 1024), "1.00 GiB");
+        assert_eq!(human_bytes(1_099_511_627_776), "1.00 TiB");
+        assert_eq!(
+            human_bytes(3u64 * 1024 * 1024 * 1024 + 512 * 1024 * 1024),
+            "3.50 GiB"
+        );
+    }
+
+    // to_wide / from_wide 互为逆操作，是所有 FFI 路径传参的基础。
+    #[test]
+    fn wide_roundtrip_ascii() {
+        let w = to_wide("test.wim");
+        assert_eq!(w.last().copied(), Some(0), "to_wide 必须以 NUL 结尾");
+        let back = unsafe { from_wide(w.as_ptr()) };
+        assert_eq!(back.as_deref(), Some("test.wim"));
+    }
+
+    #[test]
+    fn wide_roundtrip_non_ascii() {
+        let s = "镜像 テスト.wim";
+        let w = to_wide(s);
+        let back = unsafe { from_wide(w.as_ptr()) };
+        assert_eq!(back.as_deref(), Some(s));
+    }
+
+    #[test]
+    fn wide_empty_string() {
+        let w = to_wide("");
+        assert_eq!(w, vec![0u16]);
+        let back = unsafe { from_wide(w.as_ptr()) };
+        assert_eq!(back.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn from_wide_null_returns_none() {
+        let back = unsafe { from_wide(std::ptr::null()) };
+        assert_eq!(back, None);
+    }
+}

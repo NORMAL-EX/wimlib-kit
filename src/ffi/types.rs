@@ -161,3 +161,39 @@ pub fn compression_type_name(ct: i32) -> &'static str {
         _ => "未知",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compression_names() {
+        assert_eq!(compression_type_name(WIMLIB_COMPRESSION_TYPE_NONE), "无压缩");
+        assert_eq!(compression_type_name(WIMLIB_COMPRESSION_TYPE_XPRESS), "XPRESS");
+        assert_eq!(compression_type_name(WIMLIB_COMPRESSION_TYPE_LZX), "LZX");
+        assert_eq!(
+            compression_type_name(WIMLIB_COMPRESSION_TYPE_LZMS),
+            "LZMS (solid)"
+        );
+        assert_eq!(compression_type_name(42), "未知");
+    }
+
+    #[test]
+    fn integrity_flag_is_low_bit() {
+        let mut info = WimInfo::zeroed();
+        assert!(!info.has_integrity_table());
+        info.flags = 0x1;
+        assert!(info.has_integrity_table());
+        // 除最低位以外的任何位都不应被误判为“含完整性表”。
+        info.flags = 0xFFFF_FFFE;
+        assert!(!info.has_integrity_table());
+    }
+
+    // 与 C struct wimlib_wim_info（wimlib.h:1339）的内存布局必须逐字节一致。
+    // 字段顺序/类型一旦被误改，此断言会立刻失败，避免悄悄破坏 FFI 读取。
+    #[test]
+    fn wim_info_matches_c_layout() {
+        assert_eq!(std::mem::size_of::<WimInfo>(), 88);
+        assert_eq!(std::mem::align_of::<WimInfo>(), 8);
+    }
+}

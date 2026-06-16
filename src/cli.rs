@@ -183,3 +183,32 @@ fn cmd_extract(api: &WimlibApi, image: &str, index: &str, dest: &str) -> Result<
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::make_swm_glob;
+
+    #[test]
+    fn swm_glob_plain() {
+        assert_eq!(make_swm_glob("test.swm"), "test*.swm");
+    }
+
+    // test.swm / test2.swm / test3.swm 三片应归并到同一个 glob。
+    #[test]
+    fn swm_glob_strips_trailing_digits() {
+        assert_eq!(make_swm_glob("test3.swm"), "test*.swm");
+    }
+
+    // stem 全是数字时不能 trim 成空，应原样保留。
+    #[test]
+    fn swm_glob_all_digit_stem_kept() {
+        assert_eq!(make_swm_glob("123.swm"), "123*.swm");
+    }
+
+    #[test]
+    fn swm_glob_preserves_directory() {
+        let g = make_swm_glob("fixtures/test.swm");
+        assert!(g.ends_with("test*.swm"), "实际: {g}");
+        assert!(g.contains("fixtures"), "实际: {g}");
+    }
+}
