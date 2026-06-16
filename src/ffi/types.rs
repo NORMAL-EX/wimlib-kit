@@ -119,7 +119,9 @@ pub type GlobalInit = unsafe extern "C" fn(init_flags: c_int) -> c_int;
 pub type GlobalCleanup = unsafe extern "C" fn();
 pub type Free = unsafe extern "C" fn(wim: *mut WimStruct);
 pub type GetErrorString = unsafe extern "C" fn(code: c_int) -> *const u16;
-pub type GetVersionString = unsafe extern "C" fn() -> *const u8;
+// wimlib_get_version_string 返回 `const wimlib_tchar *`，在 Windows 上即
+// wchar_t（2 字节 UTF-16LE），因此是 *const u16 而非 *const u8。
+pub type GetVersionString = unsafe extern "C" fn() -> *const u16;
 pub type OpenWimWithProgress = unsafe extern "C" fn(
     wim_file: *const u16,
     open_flags: c_int,

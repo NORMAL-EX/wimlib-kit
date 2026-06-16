@@ -63,6 +63,7 @@ fn cmd_info(api: &WimlibApi, image: &str) -> Result<(), WimError> {
     // SWM 第一片只含部分资源，但 get_wim_info 仍能给出总卷数等信息。
     let info = wim.info()?;
 
+    println!("wimlib   : {}", api.version_string());
     println!("镜像文件 : {image}");
     println!("卷数     : {}", info.image_count);
     println!("WIM 版本 : 0x{:08x}", info.wim_version);

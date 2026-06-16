@@ -10,6 +10,7 @@ use libloading::{Library, Symbol};
 use std::path::PathBuf;
 
 use crate::error::WimError;
+use crate::util::from_wide;
 use types::*;
 
 pub const DLL_NAME: &str = "libwim-15.dll";
@@ -112,20 +113,14 @@ impl WimlibApi {
         Ok(api)
     }
 
-    /// 取 wimlib 版本字符串（C 字符串，ASCII）。
+    /// 取 wimlib 版本字符串（例如 "1.14.4"）。
+    ///
+    /// `wimlib_get_version_string` 返回 `const wimlib_tchar *`——在 Windows 上即
+    /// UTF-16（`wchar_t`），指向库内静态分配的字符串，读完即用、无需释放。
+    /// 复用统一的 `from_wide` 解码，不在此重复手写宽字符扫描。
     pub fn version_string(&self) -> String {
         let ptr = unsafe { (self.get_version_string)() };
-        if ptr.is_null() {
-            return "未知".to_string();
-        }
-        let mut len = 0usize;
-        unsafe {
-            while *ptr.add(len) != 0 {
-                len += 1;
-            }
-            let slice = std::slice::from_raw_parts(ptr, len);
-            String::from_utf8_lossy(slice).into_owned()
-        }
+        unsafe { from_wide(ptr) }.unwrap_or_else(|| "未知".to_string())
     }
 }
 
