@@ -17,6 +17,8 @@ pub enum ProgressKind {
     Optimize,
     Export,
     Delete,
+    Diff,
+    Patch,
 }
 
 impl ProgressKind {
@@ -31,6 +33,8 @@ impl ProgressKind {
             ProgressKind::Optimize => "优化",
             ProgressKind::Export => "导出",
             ProgressKind::Delete => "删卷",
+            ProgressKind::Diff => "增量",
+            ProgressKind::Patch => "打补丁",
         }
     }
 }

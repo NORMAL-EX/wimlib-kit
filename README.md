@@ -14,6 +14,7 @@
 - **分卷 / 合并** `split` / `join`：把大镜像切成 SWM 多片（FAT32 友好），或合并回 WIM。
 - **优化瘦身** `optimize`：原地重建 / 重压缩镜像，去碎片、缩小体积。
 - **卷编辑** `export` / `delete`：跨镜像导出 / 合并指定卷，或原地删除某卷。
+- **增量补丁** `diff` / `patch`：基于 wimlib delta WIM 生成 / 应用 **blob 级**增量（`base` + `delta` 还原完整镜像）。
 - **信息读取** `info`：卷数、各卷名/描述/版本、压缩方式、各卷大小。
 - **实时进度**：解包与校验过程显示进度条 + 速度 + ETA。
 - **完整 FFI 绑定**：运行时加载 DLL，绑定 wimlib 全部 72 个导出函数；DLL 缺失时给出友好提示而非崩溃。
@@ -68,6 +69,12 @@ imgtool export <镜像> --index <N|all> --dest <目标.wim>
 
 # 删卷：原地删除指定卷
 imgtool delete <镜像> --index <N>
+
+# 增量：生成 base→new 的 delta WIM（blob 级增量）
+imgtool diff --base <base.wim> --new <new.wim> --dest <delta.wim>
+
+# 打补丁：base + delta 还原完整镜像
+imgtool patch --base <base.wim> --patch <delta.wim> --dest <out.wim>
 ```
 
 示例：
@@ -85,6 +92,8 @@ imgtool join part.swm --dest install.wim                # 合并回 WIM
 imgtool optimize install.wim --recompress               # 原地重压缩瘦身
 imgtool export src.wim --index 2 --dest merged.wim      # 把 src 第 2 卷并入 merged.wim
 imgtool delete install.wim --index 3                    # 删掉第 3 卷
+imgtool diff --base v1.wim --new v2.wim --dest v2.delta.wim    # 生成增量
+imgtool patch --base v1.wim --patch v2.delta.wim --dest v2.wim # 还原 v2
 ```
 
 退出码：成功 `0`，镜像损坏 `2`，其它错误 `1`。

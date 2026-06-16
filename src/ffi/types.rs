@@ -25,6 +25,8 @@ pub const WIMLIB_REF_FLAG_GLOB_ENABLE: c_int = 0x0000_0001;
 pub const WIMLIB_WRITE_FLAG_CHECK_INTEGRITY: c_int = 0x0000_0001;
 pub const WIMLIB_WRITE_FLAG_RECOMPRESS: c_int = 0x0000_0010;
 pub const WIMLIB_WRITE_FLAG_REBUILD: c_int = 0x0000_0040;
+// 写出时跳过其它已引用 WIM 中已有的数据块——用于生成 delta（增量）WIM。
+pub const WIMLIB_WRITE_FLAG_SKIP_EXTERNAL_WIMS: c_int = 0x0000_0200;
 pub const WIMLIB_WRITE_FLAG_SOLID: c_int = 0x0000_1000;
 
 // ---- 特殊 image 索引 ----

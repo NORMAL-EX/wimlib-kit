@@ -322,3 +322,48 @@ fn delete_image_inplace() {
         "原 2 卷删 1 后应剩 1 卷:\n{stdout}"
     );
 }
+
+#[test]
+fn diff_and_patch_roundtrip() {
+    // base=test.wim、new=test.esd（同内容不同压缩），delta 经数据块去重应很小。
+    let delta = unique_out("delta").with_extension("wim");
+    let s1 = imgtool()
+        .args(["diff", "--base"])
+        .arg(fixture("test.wim"))
+        .arg("--new")
+        .arg(fixture("test.esd"))
+        .arg("--dest")
+        .arg(&delta)
+        .status()
+        .expect("运行 diff 失败");
+    assert!(s1.success(), "diff 退出码非 0");
+    assert!(delta.is_file(), "diff 未产出增量 WIM");
+
+    // base + delta 还原完整镜像。
+    let out = unique_out("patched").with_extension("wim");
+    let s2 = imgtool()
+        .args(["patch", "--base"])
+        .arg(fixture("test.wim"))
+        .arg("--patch")
+        .arg(&delta)
+        .arg("--dest")
+        .arg(&out)
+        .status()
+        .expect("运行 patch 失败");
+    assert!(s2.success(), "patch 退出码非 0");
+
+    // 还原的 WIM 应有 2 卷。
+    let info = imgtool()
+        .arg("info")
+        .arg(&out)
+        .output()
+        .expect("运行 info 失败");
+    let stdout = String::from_utf8_lossy(&info.stdout);
+    let _ = std::fs::remove_file(&delta);
+    let _ = std::fs::remove_file(&out);
+    assert!(info.status.success(), "info 读取还原的 WIM 失败");
+    assert!(
+        stdout.lines().any(|l| l.contains("卷数") && l.contains('2')),
+        "还原的 WIM 卷数应为 2:\n{stdout}"
+    );
+}

@@ -98,6 +98,19 @@ impl<'a> Wim<'a> {
         Ok(())
     }
 
+    /// 按字面路径引用其它 WIM 文件的资源（非 glob），用于 delta 增量的创建与应用。
+    pub fn reference_files(&self, paths: &[&str]) -> Result<(), WimError> {
+        let wides: Vec<Vec<u16>> = paths.iter().map(|s| to_wide(s)).collect();
+        let ptrs: Vec<*const u16> = wides.iter().map(|w| w.as_ptr()).collect();
+        let rc = unsafe {
+            (self.api.reference_resource_files)(self.ptr, ptrs.as_ptr(), ptrs.len() as c_uint, 0, 0)
+        };
+        if rc != WIMLIB_ERR_SUCCESS {
+            return Err(WimError::from_code_with_api(rc, self.api));
+        }
+        Ok(())
+    }
+
     /// 解包指定卷到目标目录。`image` 为 1 起始的卷号，或 WIMLIB_ALL_IMAGES。
     pub fn extract(&self, image: c_int, target: &str) -> Result<(), WimError> {
         let wtarget = to_wide(target);

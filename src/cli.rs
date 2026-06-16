@@ -143,6 +143,36 @@ pub enum Command {
         #[arg(long)]
         check: bool,
     },
+    /// 增量：比较 base 与 new，生成只含新数据块的 delta WIM（blob 级增量）
+    Diff {
+        /// 基础镜像
+        #[arg(long)]
+        base: String,
+        /// 更新后的镜像
+        #[arg(long)]
+        new: String,
+        /// 输出增量 WIM
+        #[arg(long)]
+        dest: String,
+        /// 写入完整性表
+        #[arg(long)]
+        check: bool,
+    },
+    /// 打补丁：base + 增量 WIM 还原出完整镜像
+    Patch {
+        /// 基础镜像
+        #[arg(long)]
+        base: String,
+        /// 增量 WIM（diff 的产物）
+        #[arg(long)]
+        patch: String,
+        /// 输出还原后的完整 WIM
+        #[arg(long)]
+        dest: String,
+        /// 写入完整性表
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 /// 校验失败（镜像损坏）时使用的退出码，区别于一般错误。
@@ -199,6 +229,18 @@ pub fn run(cli: Cli, api: &WimlibApi) -> Result<(), WimError> {
             index,
             check,
         } => cmd_delete(api, &image, index, check),
+        Command::Diff {
+            base,
+            new,
+            dest,
+            check,
+        } => cmd_diff(api, &base, &new, &dest, check),
+        Command::Patch {
+            base,
+            patch,
+            dest,
+            check,
+        } => cmd_patch(api, &base, &patch, &dest, check),
     }
 }
 
@@ -643,6 +685,66 @@ fn cmd_delete(api: &WimlibApi, image: &str, index: u32, check: bool) -> Result<(
         Ok(()) => {
             state.finish(true);
             println!("删卷完成 -> {image}");
+        }
+        Err(_) => state.finish(false),
+    }
+    result
+}
+
+fn cmd_diff(api: &WimlibApi, base: &str, new: &str, dest: &str, check: bool) -> Result<(), WimError> {
+    let mut state = ProgressState::new(ProgressKind::Diff);
+    let ctx = &mut state as *mut ProgressState as *mut std::os::raw::c_void;
+
+    // 打开 new、引用 base 后写出——只保存 new 相对 base 的新数据块（delta）。
+    let new_wim = Wim::open(api, new, 0, ctx)?;
+    new_wim.reference_files(&[base])?;
+    let mut write_flags = WIMLIB_WRITE_FLAG_REBUILD | WIMLIB_WRITE_FLAG_SKIP_EXTERNAL_WIMS;
+    if check {
+        write_flags |= WIMLIB_WRITE_FLAG_CHECK_INTEGRITY;
+    }
+
+    println!("生成增量：base={base}  new={new}  -> {dest}");
+    let result = new_wim.write_to(dest, write_flags);
+    match &result {
+        Ok(()) => {
+            state.finish(true);
+            println!("增量生成完成 -> {dest}");
+        }
+        Err(_) => state.finish(false),
+    }
+    result
+}
+
+fn cmd_patch(
+    api: &WimlibApi,
+    base: &str,
+    patch: &str,
+    dest: &str,
+    check: bool,
+) -> Result<(), WimError> {
+    let mut state = ProgressState::new(ProgressKind::Patch);
+    let ctx = &mut state as *mut ProgressState as *mut std::os::raw::c_void;
+
+    // 打开 delta、引用 base 补齐数据块，再导出全部卷写出完整 WIM。
+    let delta = Wim::open(api, patch, 0, std::ptr::null_mut())?;
+    delta.reference_files(&[base])?;
+    let ctype = delta.info()?.compression_type;
+
+    let out = Wim::create_new(api, ctype)?;
+    delta.export_to(&out, WIMLIB_ALL_IMAGES)?;
+    out.set_output_compression(ctype)?;
+    out.register_progress(ctx);
+    let mut write_flags = WIMLIB_WRITE_FLAG_REBUILD;
+    if check {
+        write_flags |= WIMLIB_WRITE_FLAG_CHECK_INTEGRITY;
+    }
+
+    println!("应用增量：base={base}  patch={patch}  -> {dest}");
+    let result = out.write_to(dest, write_flags);
+    match &result {
+        Ok(()) => {
+            state.finish(true);
+            println!("补丁应用完成 -> {dest}");
         }
         Err(_) => state.finish(false),
     }
