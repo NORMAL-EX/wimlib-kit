@@ -9,6 +9,7 @@
 - **三种格式通吃**：WIM、ESD（solid/LZMS 压缩的 WIM）、SWM（分卷，自动合并）。
 - **校验** `verify`：基于完整性表逐块校验，损坏时以专门退出码报错。
 - **解包/应用** `extract`：整卷解出到目录，支持单卷或全部卷。
+- **格式转换** `convert`：ESD↔WIM 互转与重压缩（LZX / LZMS / XPRESS），把全部卷导出到新容器。
 - **信息读取** `info`：卷数、各卷名/描述/版本、压缩方式、各卷大小。
 - **实时进度**：解包与校验过程显示进度条 + 速度 + ETA。
 - **完整 FFI 绑定**：运行时加载 DLL，绑定 wimlib 全部 72 个导出函数；DLL 缺失时给出友好提示而非崩溃。
@@ -42,6 +43,9 @@ imgtool verify <镜像>
 
 # 解包指定卷到目录（带进度条）
 imgtool extract <镜像> --index <N|all> --dest <目录>
+
+# ESD↔WIM 转换 / 重压缩（带进度条）
+imgtool convert <镜像> --dest <输出> [--to wim|esd] [--compress lzx|lzms|xpress|none]
 ```
 
 示例：
@@ -51,6 +55,8 @@ imgtool info install.wim
 imgtool verify install.esd
 imgtool extract install.wim --index 1 --dest C:\out
 imgtool extract install.swm --dest C:\out      # SWM 传第一片，自动合并分卷
+imgtool convert install.esd --dest install.wim          # ESD → WIM（默认 LZX）
+imgtool convert install.wim --dest install.esd --to esd # WIM → ESD（LZMS solid）
 ```
 
 退出码：成功 `0`，镜像损坏 `2`，其它错误 `1`。

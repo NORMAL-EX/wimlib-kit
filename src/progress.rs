@@ -10,6 +10,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 pub enum ProgressKind {
     Verify,
     Extract,
+    Convert,
 }
 
 impl ProgressKind {
@@ -17,6 +18,7 @@ impl ProgressKind {
         match self {
             ProgressKind::Verify => "校验",
             ProgressKind::Extract => "解包",
+            ProgressKind::Convert => "转换",
         }
     }
 }

@@ -45,6 +45,23 @@ pub enum Command {
         #[arg(long)]
         dest: String,
     },
+    /// ESD↔WIM 转换 / 重压缩（把所有卷导出到新容器，带进度条）
+    Convert {
+        /// 源镜像（.wim/.esd）
+        image: String,
+        /// 输出文件路径（按扩展名 .wim/.esd 推断目标类型，可被 --to 覆盖）
+        #[arg(long)]
+        dest: String,
+        /// 目标容器类型：wim 或 esd（默认按 dest 扩展名推断）
+        #[arg(long)]
+        to: Option<String>,
+        /// 压缩算法：none|xpress|lzx|lzms（默认 wim→lzx、esd→lzms）
+        #[arg(long)]
+        compress: Option<String>,
+        /// 写出后写入完整性表
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 /// 校验失败（镜像损坏）时使用的退出码，区别于一般错误。
@@ -55,6 +72,13 @@ pub fn run(cli: Cli, api: &WimlibApi) -> Result<(), WimError> {
         Command::Info { image } => cmd_info(api, &image),
         Command::Verify { image } => cmd_verify(api, &image),
         Command::Extract { image, index, dest } => cmd_extract(api, &image, &index, &dest),
+        Command::Convert {
+            image,
+            dest,
+            to,
+            compress,
+            check,
+        } => cmd_convert(api, &image, &dest, to.as_deref(), compress.as_deref(), check),
     }
 }
 
@@ -178,6 +202,88 @@ fn cmd_extract(api: &WimlibApi, image: &str, index: &str, dest: &str) -> Result<
         Ok(()) => {
             state.finish(true);
             println!("解包完成 -> {dest}");
+        }
+        Err(_) => state.finish(false),
+    }
+    result
+}
+
+/// 解析压缩类型名（none|xpress|lzx|lzms）。
+fn parse_compression(name: &str) -> Result<i32, WimError> {
+    Ok(match name.to_ascii_lowercase().as_str() {
+        "none" => WIMLIB_COMPRESSION_TYPE_NONE,
+        "xpress" => WIMLIB_COMPRESSION_TYPE_XPRESS,
+        "lzx" => WIMLIB_COMPRESSION_TYPE_LZX,
+        "lzms" => WIMLIB_COMPRESSION_TYPE_LZMS,
+        other => {
+            return Err(WimError::Other(format!(
+                "未知压缩类型: {other}（可选 none|xpress|lzx|lzms）"
+            )))
+        }
+    })
+}
+
+fn cmd_convert(
+    api: &WimlibApi,
+    image: &str,
+    dest: &str,
+    to: Option<&str>,
+    compress: Option<&str>,
+    check: bool,
+) -> Result<(), WimError> {
+    // 目标容器类型：显式 --to 优先，否则按输出扩展名推断（.esd→esd，其余→wim）。
+    let to_esd = match to {
+        Some(t) if t.eq_ignore_ascii_case("esd") => true,
+        Some(t) if t.eq_ignore_ascii_case("wim") => false,
+        Some(other) => {
+            return Err(WimError::Other(format!(
+                "未知目标类型: {other}（可选 wim|esd）"
+            )))
+        }
+        None => Path::new(dest)
+            .extension()
+            .map(|e| e.eq_ignore_ascii_case("esd"))
+            .unwrap_or(false),
+    };
+
+    // 压缩算法：显式 --compress 优先，否则 esd→LZMS(solid)、wim→LZX。
+    let (ctype, solid) = match compress {
+        Some(c) => {
+            let ct = parse_compression(c)?;
+            (ct, ct == WIMLIB_COMPRESSION_TYPE_LZMS)
+        }
+        None if to_esd => (WIMLIB_COMPRESSION_TYPE_LZMS, true),
+        None => (WIMLIB_COMPRESSION_TYPE_LZX, false),
+    };
+
+    let mut state = ProgressState::new(ProgressKind::Convert);
+    let ctx = &mut state as *mut ProgressState as *mut std::os::raw::c_void;
+
+    // 源镜像只读打开（无需进度）；目标新建后承载写出进度。
+    let src = Wim::open(api, image, 0, std::ptr::null_mut())?;
+    let dest_wim = Wim::create_new(api, ctype)?;
+    src.export_to(&dest_wim, WIMLIB_ALL_IMAGES)?;
+    dest_wim.set_output_compression(ctype)?;
+    dest_wim.register_progress(ctx);
+
+    let mut write_flags = WIMLIB_WRITE_FLAG_REBUILD;
+    if solid {
+        write_flags |= WIMLIB_WRITE_FLAG_SOLID;
+    }
+    if check {
+        write_flags |= WIMLIB_WRITE_FLAG_CHECK_INTEGRITY;
+    }
+
+    println!(
+        "转换 {image} -> {dest}（{}，{}）",
+        if to_esd { "ESD" } else { "WIM" },
+        compression_type_name(ctype)
+    );
+    let result = dest_wim.write_to(dest, write_flags);
+    match &result {
+        Ok(()) => {
+            state.finish(true);
+            println!("转换完成 -> {dest}");
         }
         Err(_) => state.finish(false),
     }

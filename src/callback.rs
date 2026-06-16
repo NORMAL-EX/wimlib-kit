@@ -26,6 +26,13 @@ pub extern "C" fn progress_callback(
                 let e = unsafe { &*(info as *const ProgressInfoExtract) };
                 state.update(e.completed_bytes, e.total_bytes);
             }
+            WIMLIB_PROGRESS_MSG_WRITE_STREAMS => {
+                if info.is_null() {
+                    return;
+                }
+                let w = unsafe { &*(info as *const ProgressInfoWriteStreams) };
+                state.update(w.completed_bytes, w.total_bytes);
+            }
             WIMLIB_PROGRESS_MSG_VERIFY_INTEGRITY => {
                 if info.is_null() {
                     return;

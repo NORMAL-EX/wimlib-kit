@@ -21,6 +21,11 @@ pub const WIMLIB_OPEN_FLAG_ERROR_IF_SPLIT: c_int = 0x0000_0002;
 // ---- reference flags ----
 pub const WIMLIB_REF_FLAG_GLOB_ENABLE: c_int = 0x0000_0001;
 
+// ---- write flags（用于 convert / 制作镜像的写出） ----
+pub const WIMLIB_WRITE_FLAG_CHECK_INTEGRITY: c_int = 0x0000_0001;
+pub const WIMLIB_WRITE_FLAG_REBUILD: c_int = 0x0000_0040;
+pub const WIMLIB_WRITE_FLAG_SOLID: c_int = 0x0000_1000;
+
 // ---- 特殊 image 索引 ----
 pub const WIMLIB_ALL_IMAGES: c_int = -1;
 
@@ -32,6 +37,7 @@ pub const WIMLIB_PROGRESS_STATUS_ABORT: c_int = 1;
 pub const WIMLIB_PROGRESS_MSG_EXTRACT_IMAGE_BEGIN: c_int = 0;
 pub const WIMLIB_PROGRESS_MSG_EXTRACT_FILE_STRUCTURE: c_int = 3;
 pub const WIMLIB_PROGRESS_MSG_EXTRACT_STREAMS: c_int = 4;
+pub const WIMLIB_PROGRESS_MSG_WRITE_STREAMS: c_int = 12;
 pub const WIMLIB_PROGRESS_MSG_EXTRACT_SPWM_PART_BEGIN: c_int = 5;
 pub const WIMLIB_PROGRESS_MSG_EXTRACT_METADATA: c_int = 6;
 pub const WIMLIB_PROGRESS_MSG_EXTRACT_IMAGE_END: c_int = 7;
@@ -107,6 +113,21 @@ pub struct ProgressInfoIntegrity {
     pub completed_chunks: u32,
     pub chunk_size: u32,
     pub filename: *const u16,
+}
+
+/// union wimlib_progress_info 的 `write_streams` 分支（wimlib.h:831）。
+/// 仅定义到进度所需字段为止（completed_bytes 是第 3 个字段）。
+#[repr(C)]
+pub struct ProgressInfoWriteStreams {
+    pub total_bytes: u64,
+    pub total_streams: u64,
+    pub completed_bytes: u64,
+    pub completed_streams: u64,
+    pub num_threads: u32,
+    pub compression_type: i32,
+    pub total_parts: u32,
+    pub completed_parts: u32,
+    pub completed_compressed_bytes: u64,
 }
 
 /// C 进度回调签名：

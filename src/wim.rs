@@ -108,6 +108,64 @@ impl<'a> Wim<'a> {
         }
         Ok(())
     }
+
+    /// 新建一个空的、指定压缩类型的目标 WIM（用于 convert / 制作镜像）。
+    pub fn create_new(api: &'a WimlibApi, compression_type: c_int) -> Result<Self, WimError> {
+        let mut ptr: *mut WimStruct = ptr::null_mut();
+        let rc = unsafe { (api.create_new_wim)(compression_type, &mut ptr) };
+        if rc != WIMLIB_ERR_SUCCESS {
+            return Err(WimError::from_code_with_api(rc, api));
+        }
+        if ptr.is_null() {
+            return Err(WimError::Other(
+                "wimlib_create_new_wim 返回成功但句柄为空".to_string(),
+            ));
+        }
+        Ok(Wim { api, ptr })
+    }
+
+    /// 把本镜像的指定卷导出到目标 WIM（`image` 可为 WIMLIB_ALL_IMAGES）。
+    ///
+    /// 导出的资源仍引用本镜像，调用者须保证本镜像在 `dest` 写出完成前一直存活。
+    pub fn export_to(&self, dest: &Wim, image: c_int) -> Result<(), WimError> {
+        let rc = unsafe {
+            (self.api.export_image)(self.ptr, image, dest.ptr, ptr::null(), ptr::null(), 0)
+        };
+        if rc != WIMLIB_ERR_SUCCESS {
+            return Err(WimError::from_code_with_api(rc, self.api));
+        }
+        Ok(())
+    }
+
+    /// 设置写出时使用的压缩类型。
+    pub fn set_output_compression(&self, compression_type: c_int) -> Result<(), WimError> {
+        let rc = unsafe { (self.api.set_output_compression_type)(self.ptr, compression_type) };
+        if rc != WIMLIB_ERR_SUCCESS {
+            return Err(WimError::from_code_with_api(rc, self.api));
+        }
+        Ok(())
+    }
+
+    /// 注册进度回调，用于 write 等不在 open 阶段触发的操作。
+    /// `progctx` 须在相关操作期间保持有效。
+    pub fn register_progress(&self, progctx: *mut c_void) {
+        let cb: ProgressFunc = Some(
+            progress_callback as unsafe extern "C" fn(c_int, *mut c_void, *mut c_void) -> c_int,
+        );
+        unsafe { (self.api.register_progress_function)(self.ptr, cb, progctx) };
+    }
+
+    /// 将本镜像的全部卷写出到文件。`num_threads` 传 0 表示由 wimlib 自动决定。
+    pub fn write_to(&self, path: &str, write_flags: c_int) -> Result<(), WimError> {
+        let wpath = to_wide(path);
+        let rc = unsafe {
+            (self.api.write)(self.ptr, wpath.as_ptr(), WIMLIB_ALL_IMAGES, write_flags, 0)
+        };
+        if rc != WIMLIB_ERR_SUCCESS {
+            return Err(WimError::from_code_with_api(rc, self.api));
+        }
+        Ok(())
+    }
 }
 
 impl<'a> Drop for Wim<'a> {

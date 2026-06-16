@@ -125,3 +125,32 @@ fn extract_swm_auto_merge() {
     assert!(status.success(), "extract SWM 退出码非 0");
     assert!(n > 0, "extract SWM 未解出任何文件");
 }
+
+#[test]
+fn convert_esd_to_wim() {
+    let dest = unique_out("conv").with_extension("wim");
+    let status = imgtool()
+        .args(["convert"])
+        .arg(fixture("test.esd"))
+        .args(["--to", "wim", "--dest"])
+        .arg(&dest)
+        .status()
+        .expect("运行 convert 失败");
+    assert!(status.success(), "convert ESD→WIM 退出码非 0");
+    assert!(dest.is_file(), "convert 未产出目标文件");
+
+    // 转出的 WIM 应能被正确读取：2 卷、压缩为 LZX。
+    let out = imgtool()
+        .arg("info")
+        .arg(&dest)
+        .output()
+        .expect("运行 info 失败");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let _ = std::fs::remove_file(&dest);
+    assert!(out.status.success(), "info 读取转出的 WIM 失败");
+    assert!(
+        stdout.lines().any(|l| l.contains("卷数") && l.contains('2')),
+        "转出的 WIM 卷数应为 2:\n{stdout}"
+    );
+    assert!(stdout.contains("LZX"), "转出的 WIM 压缩应为 LZX:\n{stdout}");
+}
