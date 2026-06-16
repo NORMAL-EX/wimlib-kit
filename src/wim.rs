@@ -235,6 +235,15 @@ impl<'a> Wim<'a> {
         }
         Ok(())
     }
+
+    /// 从镜像中删除指定卷（1 起始）。删除后需 overwrite/write 写回才会持久化。
+    pub fn delete_image(&self, image: c_int) -> Result<(), WimError> {
+        let rc = unsafe { (self.api.delete_image)(self.ptr, image) };
+        if rc != WIMLIB_ERR_SUCCESS {
+            return Err(WimError::from_code_with_api(rc, self.api));
+        }
+        Ok(())
+    }
 }
 
 impl<'a> Drop for Wim<'a> {

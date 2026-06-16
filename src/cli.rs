@@ -118,6 +118,31 @@ pub enum Command {
         #[arg(long)]
         check: bool,
     },
+    /// 导出：把源镜像的指定卷导出到目标 WIM（不存在则新建，存在则追加合并）
+    Export {
+        /// 源镜像
+        image: String,
+        /// 要导出的卷号（1 起始）或 all
+        #[arg(long, default_value = "1")]
+        index: String,
+        /// 目标 WIM 路径
+        #[arg(long)]
+        dest: String,
+        /// 写入完整性表
+        #[arg(long)]
+        check: bool,
+    },
+    /// 删卷：从镜像中原地删除指定卷
+    Delete {
+        /// 镜像路径（将被原地重写）
+        image: String,
+        /// 要删除的卷号（1 起始）
+        #[arg(long)]
+        index: u32,
+        /// 写入完整性表
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 /// 校验失败（镜像损坏）时使用的退出码，区别于一般错误。
@@ -163,6 +188,17 @@ pub fn run(cli: Cli, api: &WimlibApi) -> Result<(), WimError> {
             recompress,
             check,
         } => cmd_optimize(api, &image, recompress, check),
+        Command::Export {
+            image,
+            index,
+            dest,
+            check,
+        } => cmd_export(api, &image, &index, &dest, check),
+        Command::Delete {
+            image,
+            index,
+            check,
+        } => cmd_delete(api, &image, index, check),
     }
 }
 
@@ -535,6 +571,78 @@ fn cmd_optimize(
         Ok(()) => {
             state.finish(true);
             println!("优化完成 -> {image}");
+        }
+        Err(_) => state.finish(false),
+    }
+    result
+}
+
+fn cmd_export(
+    api: &WimlibApi,
+    image: &str,
+    index: &str,
+    dest: &str,
+    check: bool,
+) -> Result<(), WimError> {
+    let image_index = if index.eq_ignore_ascii_case("all") {
+        WIMLIB_ALL_IMAGES
+    } else {
+        index
+            .parse::<i32>()
+            .map_err(|_| WimError::Other(format!("无效的卷号: {index}（应为正整数或 all）")))?
+    };
+
+    let mut state = ProgressState::new(ProgressKind::Export);
+    let ctx = &mut state as *mut ProgressState as *mut std::os::raw::c_void;
+
+    let src = Wim::open(api, image, 0, std::ptr::null_mut())?;
+    let mut write_flags = WIMLIB_WRITE_FLAG_REBUILD;
+    if check {
+        write_flags |= WIMLIB_WRITE_FLAG_CHECK_INTEGRITY;
+    }
+
+    let result = if Path::new(dest).exists() {
+        // 目标已存在：打开后追加导出的卷，再原地重写（合并镜像）。
+        println!("导出 {image} 卷 {index} -> 追加到已有 {dest}");
+        let dest_wim = Wim::open(api, dest, 0, ctx)?;
+        src.export_to(&dest_wim, image_index)?;
+        dest_wim.overwrite(write_flags)
+    } else {
+        // 目标不存在：以源的压缩类型新建目标 WIM 并写出。
+        let ctype = src.info()?.compression_type;
+        println!("导出 {image} 卷 {index} -> 新建 {dest}");
+        let dest_wim = Wim::create_new(api, ctype)?;
+        src.export_to(&dest_wim, image_index)?;
+        dest_wim.set_output_compression(ctype)?;
+        dest_wim.register_progress(ctx);
+        dest_wim.write_to(dest, write_flags)
+    };
+    match &result {
+        Ok(()) => {
+            state.finish(true);
+            println!("导出完成 -> {dest}");
+        }
+        Err(_) => state.finish(false),
+    }
+    result
+}
+
+fn cmd_delete(api: &WimlibApi, image: &str, index: u32, check: bool) -> Result<(), WimError> {
+    let mut state = ProgressState::new(ProgressKind::Delete);
+    let ctx = &mut state as *mut ProgressState as *mut std::os::raw::c_void;
+
+    let wim = Wim::open(api, image, 0, ctx)?;
+    wim.delete_image(index as i32)?;
+    let mut write_flags = WIMLIB_WRITE_FLAG_REBUILD;
+    if check {
+        write_flags |= WIMLIB_WRITE_FLAG_CHECK_INTEGRITY;
+    }
+    println!("删除 {image} 的卷 {index}，重写中 ...");
+    let result = wim.overwrite(write_flags);
+    match &result {
+        Ok(()) => {
+            state.finish(true);
+            println!("删卷完成 -> {image}");
         }
         Err(_) => state.finish(false),
     }

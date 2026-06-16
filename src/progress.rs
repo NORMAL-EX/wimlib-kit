@@ -15,6 +15,8 @@ pub enum ProgressKind {
     Split,
     Join,
     Optimize,
+    Export,
+    Delete,
 }
 
 impl ProgressKind {
@@ -27,6 +29,8 @@ impl ProgressKind {
             ProgressKind::Split => "分卷",
             ProgressKind::Join => "合并",
             ProgressKind::Optimize => "优化",
+            ProgressKind::Export => "导出",
+            ProgressKind::Delete => "删卷",
         }
     }
 }

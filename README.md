@@ -13,6 +13,7 @@
 - **制作镜像** `capture`：把文件系统目录捕获打包成 WIM/ESD。
 - **分卷 / 合并** `split` / `join`：把大镜像切成 SWM 多片（FAT32 友好），或合并回 WIM。
 - **优化瘦身** `optimize`：原地重建 / 重压缩镜像，去碎片、缩小体积。
+- **卷编辑** `export` / `delete`：跨镜像导出 / 合并指定卷，或原地删除某卷。
 - **信息读取** `info`：卷数、各卷名/描述/版本、压缩方式、各卷大小。
 - **实时进度**：解包与校验过程显示进度条 + 速度 + ETA。
 - **完整 FFI 绑定**：运行时加载 DLL，绑定 wimlib 全部 72 个导出函数；DLL 缺失时给出友好提示而非崩溃。
@@ -61,6 +62,12 @@ imgtool join <任一.swm> --dest <输出.wim>
 
 # 优化：原地重建 / 重压缩瘦身（带进度条）
 imgtool optimize <镜像> [--recompress]
+
+# 导出：把指定卷导出到目标 WIM（不存在则新建，存在则追加合并）
+imgtool export <镜像> --index <N|all> --dest <目标.wim>
+
+# 删卷：原地删除指定卷
+imgtool delete <镜像> --index <N>
 ```
 
 示例：
@@ -76,6 +83,8 @@ imgtool capture C:\MyApp --dest MyApp.wim --name "MyApp"  # 目录 → WIM
 imgtool split install.wim --dest part.swm --size 3800   # 切成 ≤3800MiB/片（FAT32 友好）
 imgtool join part.swm --dest install.wim                # 合并回 WIM
 imgtool optimize install.wim --recompress               # 原地重压缩瘦身
+imgtool export src.wim --index 2 --dest merged.wim      # 把 src 第 2 卷并入 merged.wim
+imgtool delete install.wim --index 3                    # 删掉第 3 卷
 ```
 
 退出码：成功 `0`，镜像损坏 `2`，其它错误 `1`。

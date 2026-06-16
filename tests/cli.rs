@@ -272,3 +272,53 @@ fn optimize_inplace() {
         "优化后的 WIM 卷数应为 2:\n{stdout}"
     );
 }
+
+#[test]
+fn export_single_image_to_new_wim() {
+    let dest = unique_out("exp").with_extension("wim");
+    let status = imgtool()
+        .args(["export"])
+        .arg(fixture("test.wim"))
+        .args(["--index", "1", "--dest"])
+        .arg(&dest)
+        .status()
+        .expect("运行 export 失败");
+    assert!(status.success(), "export 退出码非 0");
+    let out = imgtool()
+        .arg("info")
+        .arg(&dest)
+        .output()
+        .expect("运行 info 失败");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let _ = std::fs::remove_file(&dest);
+    assert!(out.status.success(), "info 读取导出的 WIM 失败");
+    assert!(
+        stdout.lines().any(|l| l.contains("卷数") && l.contains('1')),
+        "只导出 1 卷后应为 1 卷:\n{stdout}"
+    );
+}
+
+#[test]
+fn delete_image_inplace() {
+    let work = unique_out("del").with_extension("wim");
+    std::fs::copy(fixture("test.wim"), &work).expect("复制夹具失败");
+    let status = imgtool()
+        .args(["delete"])
+        .arg(&work)
+        .args(["--index", "2"])
+        .status()
+        .expect("运行 delete 失败");
+    assert!(status.success(), "delete 退出码非 0");
+    let out = imgtool()
+        .arg("info")
+        .arg(&work)
+        .output()
+        .expect("运行 info 失败");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let _ = std::fs::remove_file(&work);
+    assert!(out.status.success(), "info 读取删卷后的 WIM 失败");
+    assert!(
+        stdout.lines().any(|l| l.contains("卷数") && l.contains('1')),
+        "原 2 卷删 1 后应剩 1 卷:\n{stdout}"
+    );
+}
