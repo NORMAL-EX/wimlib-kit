@@ -189,3 +189,57 @@ fn capture_dir_to_wim() {
     );
     assert!(stdout.contains("TestImg"), "应包含卷名 TestImg:\n{stdout}");
 }
+
+#[test]
+fn split_and_join_roundtrip() {
+    let dir = unique_out("splitdir");
+    std::fs::create_dir_all(&dir).expect("建分卷目录失败");
+    let swm = dir.join("part.swm");
+
+    // 分卷（每片 1 MiB；夹具较小可能只 1 片，但 round-trip 仍验证正确性）。
+    let status = imgtool()
+        .args(["split"])
+        .arg(fixture("test.wim"))
+        .arg("--dest")
+        .arg(&swm)
+        .args(["--size", "1"])
+        .status()
+        .expect("运行 split 失败");
+    assert!(status.success(), "split 退出码非 0");
+    let part_count = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map_or(false, |x| x.eq_ignore_ascii_case("swm"))
+        })
+        .count();
+    assert!(part_count > 0, "split 未产出任何 SWM 分卷");
+
+    // 合并回 WIM（传第一片，自动查找其余片）。
+    let joined = unique_out("joined").with_extension("wim");
+    let status2 = imgtool()
+        .args(["join"])
+        .arg(&swm)
+        .arg("--dest")
+        .arg(&joined)
+        .status()
+        .expect("运行 join 失败");
+    assert!(status2.success(), "join 退出码非 0");
+
+    // 合并后的 WIM 应仍有 2 卷。
+    let out = imgtool()
+        .arg("info")
+        .arg(&joined)
+        .output()
+        .expect("运行 info 失败");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_file(&joined);
+    assert!(out.status.success(), "info 读取合并后的 WIM 失败");
+    assert!(
+        stdout.lines().any(|l| l.contains("卷数") && l.contains('2')),
+        "合并后的 WIM 卷数应为 2:\n{stdout}"
+    );
+}

@@ -12,6 +12,8 @@ pub enum ProgressKind {
     Extract,
     Convert,
     Capture,
+    Split,
+    Join,
 }
 
 impl ProgressKind {
@@ -21,6 +23,8 @@ impl ProgressKind {
             ProgressKind::Extract => "解包",
             ProgressKind::Convert => "转换",
             ProgressKind::Capture => "制作",
+            ProgressKind::Split => "分卷",
+            ProgressKind::Join => "合并",
         }
     }
 }

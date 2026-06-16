@@ -11,6 +11,7 @@
 - **解包/应用** `extract`：整卷解出到目录，支持单卷或全部卷。
 - **格式转换** `convert`：ESD↔WIM 互转与重压缩（LZX / LZMS / XPRESS），把全部卷导出到新容器。
 - **制作镜像** `capture`：把文件系统目录捕获打包成 WIM/ESD。
+- **分卷 / 合并** `split` / `join`：把大镜像切成 SWM 多片（FAT32 友好），或合并回 WIM。
 - **信息读取** `info`：卷数、各卷名/描述/版本、压缩方式、各卷大小。
 - **实时进度**：解包与校验过程显示进度条 + 速度 + ETA。
 - **完整 FFI 绑定**：运行时加载 DLL，绑定 wimlib 全部 72 个导出函数；DLL 缺失时给出友好提示而非崩溃。
@@ -50,6 +51,12 @@ imgtool convert <镜像> --dest <输出> [--to wim|esd] [--compress lzx|lzms|xpr
 
 # 制作镜像：把目录打包成 WIM/ESD（带进度条）
 imgtool capture <源目录> --dest <输出> [--name <卷名>] [--to wim|esd] [--compress lzx|lzms|xpress|none]
+
+# 分卷：把镜像切成 SWM 多片（带进度条）
+imgtool split <镜像> --dest <out.swm> --size <每片MiB>
+
+# 合并：把 SWM 分卷合并回 WIM（传任一分卷，自动找齐）
+imgtool join <任一.swm> --dest <输出.wim>
 ```
 
 示例：
@@ -62,6 +69,8 @@ imgtool extract install.swm --dest C:\out      # SWM 传第一片，自动合并
 imgtool convert install.esd --dest install.wim          # ESD → WIM（默认 LZX）
 imgtool convert install.wim --dest install.esd --to esd # WIM → ESD（LZMS solid）
 imgtool capture C:\MyApp --dest MyApp.wim --name "MyApp"  # 目录 → WIM
+imgtool split install.wim --dest part.swm --size 3800   # 切成 ≤3800MiB/片（FAT32 友好）
+imgtool join part.swm --dest install.wim                # 合并回 WIM
 ```
 
 退出码：成功 `0`，镜像损坏 `2`，其它错误 `1`。

@@ -1,6 +1,6 @@
 //! 安全封装层：RAII 的 `Wim` 句柄（Drop 时 wimlib_free），以及 open/info/verify/extract。
 
-use std::os::raw::{c_int, c_void};
+use std::os::raw::{c_int, c_uint, c_void};
 use std::ptr;
 
 use crate::callback::progress_callback;
@@ -178,6 +178,51 @@ impl<'a> Wim<'a> {
         };
         if rc != WIMLIB_ERR_SUCCESS {
             return Err(WimError::from_code_with_api(rc, self.api));
+        }
+        Ok(())
+    }
+
+    /// 将本镜像分割为多个 SWM 分卷（写到 `swm_path`，wimlib 自动为后续片编号）。
+    /// `part_size` 为每片最大字节数。
+    pub fn split(&self, swm_path: &str, part_size: u64, write_flags: c_int) -> Result<(), WimError> {
+        let wpath = to_wide(swm_path);
+        let rc = unsafe { (self.api.split)(self.ptr, wpath.as_ptr(), part_size, write_flags) };
+        if rc != WIMLIB_ERR_SUCCESS {
+            return Err(WimError::from_code_with_api(rc, self.api));
+        }
+        Ok(())
+    }
+
+    /// 将多个 SWM 分卷合并为一个 WIM 文件。`progctx` 非空时显示进度。
+    pub fn join_swms(
+        api: &WimlibApi,
+        swm_paths: &[String],
+        output: &str,
+        wim_write_flags: c_int,
+        progctx: *mut c_void,
+    ) -> Result<(), WimError> {
+        // 先把每个路径转成 NUL 结尾的 UTF-16，再收集裸指针数组传给 wimlib。
+        let wides: Vec<Vec<u16>> = swm_paths.iter().map(|s| to_wide(s)).collect();
+        let ptrs: Vec<*const u16> = wides.iter().map(|w| w.as_ptr()).collect();
+        let woutput = to_wide(output);
+        let progfunc: ProgressFunc = if progctx.is_null() {
+            None
+        } else {
+            Some(progress_callback as unsafe extern "C" fn(c_int, *mut c_void, *mut c_void) -> c_int)
+        };
+        let rc = unsafe {
+            (api.join_with_progress)(
+                ptrs.as_ptr(),
+                ptrs.len() as c_uint,
+                woutput.as_ptr(),
+                0,
+                wim_write_flags,
+                progfunc,
+                progctx,
+            )
+        };
+        if rc != WIMLIB_ERR_SUCCESS {
+            return Err(WimError::from_code_with_api(rc, api));
         }
         Ok(())
     }

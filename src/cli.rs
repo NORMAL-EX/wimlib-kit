@@ -82,6 +82,31 @@ pub enum Command {
         #[arg(long)]
         check: bool,
     },
+    /// 分卷：把镜像分割为多个 SWM 分卷（带进度条）
+    Split {
+        /// 源镜像（.wim/.esd）
+        image: String,
+        /// 输出 SWM 第一片路径（如 out.swm，后续片自动编号）
+        #[arg(long)]
+        dest: String,
+        /// 每片最大大小（MiB）
+        #[arg(long, default_value = "1024")]
+        size: u64,
+        /// 写出后写入完整性表
+        #[arg(long)]
+        check: bool,
+    },
+    /// 合并：把 SWM 分卷合并回一个 WIM（传任一分卷，自动查找其余片）
+    Join {
+        /// 任一 SWM 分卷路径
+        image: String,
+        /// 输出 WIM 文件
+        #[arg(long)]
+        dest: String,
+        /// 写出后写入完整性表
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 /// 校验失败（镜像损坏）时使用的退出码，区别于一般错误。
@@ -115,6 +140,13 @@ pub fn run(cli: Cli, api: &WimlibApi) -> Result<(), WimError> {
             compress.as_deref(),
             check,
         ),
+        Command::Split {
+            image,
+            dest,
+            size,
+            check,
+        } => cmd_split(api, &image, &dest, size, check),
+        Command::Join { image, dest, check } => cmd_join(api, &image, &dest, check),
     }
 }
 
@@ -377,6 +409,90 @@ fn cmd_capture(
         Err(_) => state.finish(false),
     }
     result
+}
+
+fn cmd_split(
+    api: &WimlibApi,
+    image: &str,
+    dest: &str,
+    size_mib: u64,
+    check: bool,
+) -> Result<(), WimError> {
+    let part_size = size_mib.max(1).saturating_mul(1024 * 1024);
+
+    let mut state = ProgressState::new(ProgressKind::Split);
+    let ctx = &mut state as *mut ProgressState as *mut std::os::raw::c_void;
+
+    let wim = Wim::open(api, image, 0, ctx)?;
+    let write_flags = if check {
+        WIMLIB_WRITE_FLAG_CHECK_INTEGRITY
+    } else {
+        0
+    };
+
+    println!("分卷 {image} -> {dest}（每片 ≤ {size_mib} MiB）");
+    let result = wim.split(dest, part_size, write_flags);
+    match &result {
+        Ok(()) => {
+            state.finish(true);
+            println!("分卷完成 -> {dest}");
+        }
+        Err(_) => state.finish(false),
+    }
+    result
+}
+
+fn cmd_join(api: &WimlibApi, image: &str, dest: &str, check: bool) -> Result<(), WimError> {
+    let parts = swm_parts(image)?;
+
+    let mut state = ProgressState::new(ProgressKind::Join);
+    let ctx = &mut state as *mut ProgressState as *mut std::os::raw::c_void;
+    let write_flags = if check {
+        WIMLIB_WRITE_FLAG_CHECK_INTEGRITY
+    } else {
+        0
+    };
+
+    println!("合并 {} 个分卷 -> {dest}", parts.len());
+    let result = Wim::join_swms(api, &parts, dest, write_flags, ctx);
+    match &result {
+        Ok(()) => {
+            state.finish(true);
+            println!("合并完成 -> {dest}");
+        }
+        Err(_) => state.finish(false),
+    }
+    result
+}
+
+/// 根据任一 SWM 分卷路径，查找同目录下同前缀的全部 .swm 分卷（用于 join）。
+fn swm_parts(first: &str) -> Result<Vec<String>, WimError> {
+    let p = Path::new(first);
+    let dir = p.parent().filter(|d| !d.as_os_str().is_empty());
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let base = stem.trim_end_matches(|c: char| c.is_ascii_digit());
+    let base = if base.is_empty() { stem } else { base };
+    let dir_path = dir.unwrap_or_else(|| Path::new("."));
+
+    let mut parts = Vec::new();
+    let rd = std::fs::read_dir(dir_path)
+        .map_err(|e| WimError::Other(format!("读取目录 {} 失败: {e}", dir_path.display())))?;
+    for entry in rd {
+        let entry = entry.map_err(|e| WimError::Other(format!("读取目录项失败: {e}")))?;
+        let fname = entry.file_name();
+        let name = fname.to_string_lossy();
+        if name.starts_with(base) && name.to_ascii_lowercase().ends_with(".swm") {
+            parts.push(entry.path().to_string_lossy().into_owned());
+        }
+    }
+    parts.sort();
+    if parts.is_empty() {
+        return Err(WimError::Other(format!(
+            "未找到任何 SWM 分卷（目录 {}，前缀 {base}）",
+            dir_path.display()
+        )));
+    }
+    Ok(parts)
 }
 
 #[cfg(test)]
