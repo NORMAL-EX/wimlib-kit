@@ -39,6 +39,18 @@ cargo build --release --target x86_64-pc-windows-msvc
 
 ## 用法
 
+| 子命令 | 作用 |
+|---|---|
+| `info` | 读取镜像信息（卷数 / 卷名 / 版本 / 压缩 / 大小） |
+| `verify` | 校验完整性（损坏时退出码 2） |
+| `extract` | 解包 / 应用镜像（WIM / ESD / SWM） |
+| `convert` | ESD↔WIM 转换 / 重压缩 |
+| `capture` | 把目录制作成镜像 |
+| `split` / `join` | 分卷 / 合并 |
+| `optimize` | 重建 / 重压缩瘦身 |
+| `export` / `delete` | 卷级导出合并 / 删除 |
+| `diff` / `patch` | blob 级增量补丁（base + delta 还原） |
+
 ```sh
 # 读取镜像信息（卷数 / 卷名 / 版本 / 压缩方式 / 大小）
 imgtool info <镜像>
